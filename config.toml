@@ -1,0 +1,8 @@
+# configuration for the document extractor
+
+[aws]
+s3_upload_path="s3://textract-7e607b39-c7ba-4547-8794-db30c3ee4d22/"
+
+[data]
+input_folder="data"
+output_folder="data/export"
