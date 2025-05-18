@@ -42,7 +42,7 @@ def parse_redmart_date(value:str):
 
 
 
-def locate_invoice_date(document:Document | LazyDocument) -> datetime:
+def locate_invoice_date(document:Document | LazyDocument) -> datetime | None:
     """
     This function goes through the list of key/values of a Textractor document (or LazyDocument).
     If a key contains the word "date", it then attempts to parse the value as date object.
