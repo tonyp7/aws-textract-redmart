@@ -5,11 +5,13 @@ A real world use-case of AWS Textract, getting data out of PDF invoices from an 
 ## Invoice
 
 The invoices are from Redmart, an online supermarket. A masked sample pdf is provided under the data subfolder of this repository.
+
 ![image](https://tonypottier.com/content/images/2025/05/invoice-data-masked8b.png)
 
 ## Output CSV
 
 The goal is to get an output CSV containing the invoice details, as well as an additional column containing the invoice date.
+
 ![image](https://tonypottier.com/content/images/2025/05/final-data-export-csv.png)
 
 ## Running the code
