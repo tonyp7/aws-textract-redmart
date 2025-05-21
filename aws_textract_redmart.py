@@ -1,17 +1,16 @@
+""" Demonstration of AWS Textract applied to Redmart PDF invoices """
+
+import logging
+from datetime import datetime
+import tomllib
+import glob
+from pathlib import Path
 from textractor import Textractor
 from textractor.data.constants import TextractFeatures
 from textractor.entities.table import Table
 from textractor.entities.document import Document
 from textractor.entities.lazy_document import LazyDocument
-import logging
-from datetime import datetime
-import tomllib
-import pandas as pd
 import numpy as np
-import glob
-from pathlib import Path
-
-
 
 def parse_redmart_date(value:str):
     """
@@ -29,12 +28,12 @@ def parse_redmart_date(value:str):
 
     formats = ['%d %B, %Y', '%A, %d %B, %Y', '%Y-%m-%d']
 
-    for f in formats:
+    for fmt in formats:
         try:
-            d = datetime.strptime(value, f)
+            d = datetime.strptime(value, fmt)
             if d is not None:
                 return d
-        except:
+        except ValueError:
             continue
 
     #no date was found
@@ -57,12 +56,11 @@ def locate_invoice_date(document:Document | LazyDocument) -> datetime | None:
     """
 
     for kv in document.key_values:
-        if 'date' in kv.key.text.lower(): 
+        if 'date' in kv.key.text.lower():
             t = kv.value.text.strip()
             d = parse_redmart_date(t)
             if d is not None:
                 return d
-    
     #no date was found
     return None
 
@@ -76,19 +74,19 @@ def locate_invoice_table(tables: list[Table]) -> int:
     :param tables: A list of textractor of table entities
     :return: index of the table, -1 if it count not be located
     """
-    for i in range(len(tables)):
-        t = tables[i]
+    for i, t in enumerate(tables):
         df = t.to_pandas()
         row0 = df.values[0]
 
         #Product Name seems to always be in there
-        if next((s for s in row0 if 'Product Name'.lower() in s.lower()), None) != None:
+        if next((s for s in row0 if 'Product Name'.lower() in s.lower()), None) is not None:
             return i
-        
+
     return -1
 
 
-def process_invoice_file(file:str, s3_upload_path:str) -> Document | LazyDocument:
+def process_invoice_file(input_file:str, extractor:Textractor,
+                         s3_upload_path:str) -> Document | LazyDocument:
     """
     Process a local pdf invoice file, sending it to AWS Textract for analysis.
 
@@ -97,7 +95,7 @@ def process_invoice_file(file:str, s3_upload_path:str) -> Document | LazyDocumen
     :return: a Textractor Document object
     """
     document = extractor.start_document_analysis(
-        file,
+        input_file,
         s3_upload_path=s3_upload_path,
         features=[TextractFeatures.TABLES, TextractFeatures.FORMS],
         save_image=False
@@ -125,7 +123,7 @@ def export_textract_table_to_csv(t:Table, output_file:str, document_date:datetim
     #downside is that we need to manually craft the first row
     #when adding the date to the dataframe
     df = t.to_pandas(use_columns=False)
-    df = df.replace(r'\n',' ', regex=True) 
+    df = df.replace(r'\n',' ', regex=True)
     df = df.replace(r'\r',' ', regex=True)
 
     #date conversion to YYYY-MM-DD
@@ -141,34 +139,35 @@ def export_textract_table_to_csv(t:Table, output_file:str, document_date:datetim
     df.to_csv(output_file, index=False, header=False)
 
 
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
 
-logging.basicConfig(level=logging.INFO)
+    # Config file, contains the S3 upload bucket that is needed for AWS Textractor
+    # Change this to adapt to your own AWS environment
+    with open("config.toml", "rb") as f:
+        config = tomllib.load(f)
 
-# Config file, contains the S3 upload bucket that is needed for AWS Textractor
-# Change this to adapt to your own AWS environment
-with open("config.toml", "rb") as f:
-    config = tomllib.load(f)
+    #AWS Textractor
+    aws_extractor = Textractor(profile_name="default")
 
+    #Process each pdf in the input folder, place CSV output in output folder
+    #with the same name but as .csv
+    for file in glob.glob(config['data']['input_folder'] + "/*.pdf"):
+        out_file = config['data']['output_folder'] + '/' + Path(file).stem + '.csv'
 
-#AWS Textractor
-extractor = Textractor(profile_name="default")
+        textractor_document = process_invoice_file(input_file=file, extractor=aws_extractor,
+                                        s3_upload_path=config['aws']['s3_upload_path'])
+        dt = locate_invoice_date(textractor_document)
+        idx = locate_invoice_table(textractor_document.tables)
+        if idx >= 0:
+            export_textract_table_to_csv(textractor_document.tables[idx],
+                                         output_file=out_file,
+                                         document_date=dt)
+            if dt is None:
+                logging.warning( "File %s was processed without a date", file)
+            else:
+                logging.info( "File %s was processed successfully", file )
 
-#Process each pdf in the input folder, place CSV output in output folder
-#with the same name but as .csv
-for file in glob.glob(config['data']['input_folder'] + "/*.pdf"):
-    output_file = config['data']['output_folder'] + '/' + Path(file).stem + '.csv'
-
-    document = process_invoice_file(file, config['aws']['s3_upload_path'])
-    dt = locate_invoice_date(document)
-    idx = locate_invoice_table(document.tables)
-    if idx >= 0:
-        export_textract_table_to_csv(document.tables[idx], output_file=output_file, document_date=dt)
-        if dt is None:
-            logging.warning( f"File {file} was processed without a date" )
         else:
-            logging.info( f"File {file} was processed successfully" )
-
-    else:
-        logging.warning( f"Script failed to locate an invoice detail list table in file {file}" )
-
-
+            logging.warning( "Script failed to locate an invoice detail list " \
+                                "table in file %s", file )
