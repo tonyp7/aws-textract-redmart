@@ -79,7 +79,7 @@ def locate_invoice_table(tables: list[Table]) -> int:
         row0 = df.values[0]
 
         #Product Name seems to always be in there
-        if next((s for s in row0 if 'Product Name'.lower() in s.lower()), None) != None:
+        if next((s for s in row0 if 'Product Name'.lower() in s.lower()), None) is not None:
             return i
 
     return -1
@@ -122,7 +122,7 @@ def export_textract_table_to_csv(t:Table, output_file:str, document_date:datetim
     #downside is that we need to manually craft the first row
     #when adding the date to the dataframe
     df = t.to_pandas(use_columns=False)
-    df = df.replace(r'\n',' ', regex=True) 
+    df = df.replace(r'\n',' ', regex=True)
     df = df.replace(r'\r',' ', regex=True)
 
     #date conversion to YYYY-MM-DD
@@ -158,8 +158,8 @@ if __name__ == "__main__":
         dt = locate_invoice_date(document)
         idx = locate_invoice_table(document.tables)
         if idx >= 0:
-            export_textract_table_to_csv(document.tables[idx], 
-                                         output_file=output_file, 
+            export_textract_table_to_csv(document.tables[idx],
+                                         output_file=output_file,
                                          document_date=dt)
             if dt is None:
                 logging.warning( "File %s was processed without a date", file)
@@ -167,4 +167,5 @@ if __name__ == "__main__":
                 logging.info( "File %s was processed successfully", file )
 
         else:
-            logging.warning( "Script failed to locate an invoice detail list table in file %s", file )
+            logging.warning( "Script failed to locate an invoice detail list " \
+                                "table in file %s", file )
