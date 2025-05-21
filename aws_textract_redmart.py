@@ -85,7 +85,8 @@ def locate_invoice_table(tables: list[Table]) -> int:
     return -1
 
 
-def process_invoice_file(file:str, extractor:Textractor, s3_upload_path:str) -> Document | LazyDocument:
+def process_invoice_file(input_file:str, extractor:Textractor,
+                         s3_upload_path:str) -> Document | LazyDocument:
     """
     Process a local pdf invoice file, sending it to AWS Textract for analysis.
 
@@ -94,7 +95,7 @@ def process_invoice_file(file:str, extractor:Textractor, s3_upload_path:str) -> 
     :return: a Textractor Document object
     """
     document = extractor.start_document_analysis(
-        file,
+        input_file,
         s3_upload_path=s3_upload_path,
         features=[TextractFeatures.TABLES, TextractFeatures.FORMS],
         save_image=False
@@ -147,19 +148,20 @@ if __name__ == "__main__":
         config = tomllib.load(f)
 
     #AWS Textractor
-    extractor = Textractor(profile_name="default")
+    aws_extractor = Textractor(profile_name="default")
 
     #Process each pdf in the input folder, place CSV output in output folder
     #with the same name but as .csv
     for file in glob.glob(config['data']['input_folder'] + "/*.pdf"):
-        output_file = config['data']['output_folder'] + '/' + Path(file).stem + '.csv'
+        out_file = config['data']['output_folder'] + '/' + Path(file).stem + '.csv'
 
-        document = process_invoice_file(file, extractor, config['aws']['s3_upload_path'])
-        dt = locate_invoice_date(document)
-        idx = locate_invoice_table(document.tables)
+        textractor_document = process_invoice_file(input_file=file, extractor=aws_extractor,
+                                        s3_upload_path=config['aws']['s3_upload_path'])
+        dt = locate_invoice_date(textractor_document)
+        idx = locate_invoice_table(textractor_document.tables)
         if idx >= 0:
-            export_textract_table_to_csv(document.tables[idx],
-                                         output_file=output_file,
+            export_textract_table_to_csv(textractor_document.tables[idx],
+                                         output_file=out_file,
                                          document_date=dt)
             if dt is None:
                 logging.warning( "File %s was processed without a date", file)
